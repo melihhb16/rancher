@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Token → WAX → USD Günlük Kazanç Hesaplama</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; background: #f7f8fa; }
+  h1 { font-size: 1.6rem; margin-bottom: 12px; }
+  label { display: block; margin-top: 12px; font-weight: 500; }
+  input { width: 160px; padding: 6px 8px; margin-top: 4px; border: 1px solid #d0d4d9; border-radius: 6px; }
+  button { margin-top: 18px; padding: 10px 16px; font-size: 15px; border: none; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,.08); cursor: pointer; background:#2563eb; color:#fff; }
+  #result { margin-top: 24px; font-size: 1.2rem; font-weight: 600; color:#111827; }
+  p.hint { font-size: 0.88rem; color: #6b7280; margin-top: 4px; max-width: 650px; }
+</style>
+<script>
+  // Token ID'leri
+  const TOKEN_IDS = {
+    rcoin: 'rcoin-ranchersbank',
+    ranch: 'ranch-ranchersbank',
+    tool: 'tool-ranchersbank',
+    farm: 'farm-ranchersbank'
+  };
+
+  // Üretim & tüketim (günlük)
+  const PRODUCTION = {
+    ranch: 55 * 24, // saatlik 55 ranch x 24 saat
+    rcoin: 4,       // 24 saatte 2-6 arası ortalama 4
+  };
+
+  const CONSUMPTION = {
+    farm: 12 * 24 + 5 * 24, // toplam farm tüketimi (item1 + item2)
+    tool: 9 * 24 + 1 * 24   // toplam tool tüketimi (item1 + item2)
+  };
+
+  const FEE_PERCENT = 6; // %6 fee
+
+  // Sayı çevirici
+  function toNumber(v){ return parseFloat(v) || 0; }
+
+  // Fiyatları çek
+  async function fetchPrices() {
+    const prices = {};
+    try {
+      for (const [key, id] of Object.entries(TOKEN_IDS)) {
+        const res = await fetch(`https://api.alcor.exchange/api/v2/tokens/${id}`);
+        const data = await res.json();
+        prices[key] = {
+          wax: data.system_price,
+          usd: data.usd_price
+        };
+        document.getElementById(key + 'Wax').value = prices[key].wax.toFixed(6);
+        document.getElementById(key + 'Usd').value = prices[key].usd.toFixed(6);
+      }
+    } catch (e) {
+      alert('Fiyatlar alınamadı. Lütfen internet bağlantınızı kontrol edin veya daha sonra tekrar deneyin.');
+      console.error(e);
+    }
+    calculate(prices);
+  }
+
+  // Hesaplama fonksiyonu
+  function calculate(prices = null) {
+    // Eğer prices objesi yoksa inputlardan al
+    if(!prices){
+      prices = {
+        ranch: { wax: toNumber(document.getElementById('ranchWax').value) },
+        rcoin: { wax: toNumber(document.getElementById('rcoinWax').value) },
+        farm: { wax: toNumber(document.getElementById('farmWax').value) },
+        tool: { wax: toNumber(document.getElementById('toolWax').value) },
+      };
+    }
+
+    const feeFactor = (100 - toNumber(document.getElementById('fee').value)) / 100;
+
+    const revenueWax = feeFactor * (PRODUCTION.ranch * prices.ranch.wax + PRODUCTION.rcoin * prices.rcoin.wax);
+    const costWax = CONSUMPTION.farm * prices.farm.wax + CONSUMPTION.tool * prices.tool.wax;
+    const netWax = revenueWax - costWax;
+
+    const waxUsd = toNumber(document.getElementById('waxUsd').value);
+    const netUsd = netWax * waxUsd;
+
+    document.getElementById('result').innerHTML = `
+      <div>Net kazanç: <strong>${netWax.toFixed(4)} WAX</strong> / gün</div>
+      <div>≈ <strong>${netUsd.toFixed(2)} USD</strong> / gün</div>
+    `;
+  }
+
+  // Sayfa yüklendiğinde fiyatları çek ve hesapla
+  window.addEventListener('load', () => {
+    // WAX/USD fiyatını CoinGecko’dan çek
+    fetch('https://api.coingecko.com/api/v3/simple/price?ids=wax&vs_currencies=usd')
+      .then(res => res.json())
+      .then(data => {
+        if(data && data.wax && data.wax.usd){
+          document.getElementById('waxUsd').value = data.wax.usd.toFixed(4);
+        }
+      })
+      .catch(console.error);
+
+    fetchPrices();
+  });
+</script>
+</head>
+<body>
+  <h1>Token → WAX → USD Günlük Kazanç Hesaplama</h1>
+  <p class="hint">Fiyatlar otomatik çekilir. İstersen fiyatları elle değiştirebilir ve <strong>Hesapla</strong> tuşuna basabilirsin.</p>
+
+  <div>
+    <label>Ranch fiyatı (WAX)
+      <input id="ranchWax" type="number" step="0.000001" />
+    </label>
+    <label>Ranch fiyatı (USD)
+      <input id="ranchUsd" type="number" step="0.000001" disabled />
+    </label>
+
+    <label>Rcoin fiyatı (WAX)
+      <input id="rcoinWax" type="number" step="0.000001" />
+    </label>
+    <label>Rcoin fiyatı (USD)
+      <input id="rcoinUsd" type="number" step="0.000001" disabled />
+    </label>
+
+    <label>Farm fiyatı (WAX)
+      <input id="farmWax" type="number" step="0.000001" />
+    </label>
+    <label>Farm fiyatı (USD)
+      <input id="farmUsd" type="number" step="0.000001" disabled />
+    </label>
+
+    <label>Tool fiyatı (WAX)
+      <input id="toolWax" type="number" step="0.000001" />
+    </label>
+    <label>Tool fiyatı (USD)
+      <input id="toolUsd" type="number" step="0.000001" disabled />
+    </label>
+
+    <label>Çekim ücreti (%)
+      <input id="fee" type="number" step="0.1" value="6" />
+    </label>
+
+    <label>1 WAX kaç USD?
+      <input id="waxUsd" type="number" step="0.0001" />
+    </label>
+
+    <button onclick="calculate()">🧮 Hesapla</button>
+    <button onclick="fetchPrices()">⬇️ Fiyatları Güncelle</button>
+  </div>
+
+  <div id="result" style="margin-top:12px">Net kazanç burada görünecek.</div>
+</body>
+</html>
